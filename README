@@ -1,0 +1,9 @@
+This project contains a simple VARIANT implementation with protobuf-net. The idea
+is to allow you to easilly add properties to a protocol which do not have a
+specific data type.
+
+This implementation is optimized for message size. Most of the time, it just adds
+one byte overhead.
+
+This project was inspired by a question placed on StackOverflow which can
+be found at http://stackoverflow.com/questions/6519533/how-to-implement-variant-in-protobuf.
