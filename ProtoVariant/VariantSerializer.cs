@@ -7,7 +7,42 @@ namespace ProtoVariant
 {
     partial class Variant
     {
-        private static Dictionary<Type, VariantSerializer> _serializers = new Dictionary<Type,VariantSerializer>
+        private object ConstructValue()
+        {
+            switch (_type)
+            {
+                case VariantType.BoolFalse: return false;
+                case VariantType.BoolTrue: return true;
+                case VariantType.DoubleZero: return 0d;
+                case VariantType.FloatZero: return 0f;
+                case VariantType.Int32Zero: return 0;
+                case VariantType.Int64Zero: return 0L;
+                case VariantType.Null: return null;
+                case VariantType.StringEmpty: return String.Empty;
+                case VariantType.DateTimeZero: return new DateTime(0);
+
+                default:
+                    if (_valueInt32 != 0)
+                        return _valueInt32;
+                    if (_valueInt64 != 0L)
+                        return _valueInt64;
+                    if (_valueDouble != 0d)
+                        return _valueDouble;
+                    if (_valueFloat != 0f)
+                        return _valueFloat;
+                    if (!String.IsNullOrEmpty(_valueString))
+                        return _valueString;
+                    if (_valueBytes != null)
+                        return _valueBytes;
+                    if (_valueDateTime != 0L)
+                        return new DateTime(_valueDateTime);
+                    if (!String.IsNullOrEmpty(_valueDecimal))
+                        return Decimal.Parse(_valueDecimal, CultureInfo.InvariantCulture);
+                    return null;
+            }
+        }
+
+        private static Dictionary<Type, VariantSerializer> _serializers = new Dictionary<Type, VariantSerializer>
         {
             { typeof(bool), new BoolSerializer() },
             { typeof(string), new StringSeriaizer() },
