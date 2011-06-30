@@ -13,7 +13,7 @@ namespace ProtoVariant.Test
         [Test]
         public void Simple_roundtrip()
         {
-            var variant = Variant.Create(1);
+            var variant = new Variant(1);
 
             var bytes = GetBytes(variant);
 
@@ -25,17 +25,17 @@ namespace ProtoVariant.Test
         [Test]
         public void Test_sizes()
         {
-            Assert.AreEqual(2, GetBytes(Variant.Create(0)).Length);
-            Assert.AreEqual(2, GetBytes(Variant.Create(null)).Length);
-            Assert.AreEqual(2, GetBytes(Variant.Create(1)).Length);
-            Assert.AreEqual(2, GetBytes(Variant.Create(true)).Length);
-            Assert.AreEqual(5, GetBytes(Variant.Create("Foo")).Length);
-            Assert.AreEqual(21, GetBytes(Variant.Create(DateTime.Now)).Length);
-            Assert.AreEqual(3, GetBytes(Variant.Create(1m)).Length);
-            Assert.AreEqual(11, GetBytes(Variant.Create(12345.678m)).Length);
-            Assert.AreEqual(9, GetBytes(Variant.Create(1d)).Length);
-            Assert.AreEqual(5, GetBytes(Variant.Create(1f)).Length);
-            Assert.AreEqual(5, GetBytes(Variant.Create(Single.NaN)).Length);
+            Assert.AreEqual(2, GetBytes(new Variant(0)).Length);
+            Assert.AreEqual(2, GetBytes(new Variant(null)).Length);
+            Assert.AreEqual(2, GetBytes(new Variant(1)).Length);
+            Assert.AreEqual(2, GetBytes(new Variant(true)).Length);
+            Assert.AreEqual(5, GetBytes(new Variant("Foo")).Length);
+            Assert.AreEqual(21, GetBytes(new Variant(DateTime.Now)).Length);
+            Assert.AreEqual(3, GetBytes(new Variant(1m)).Length);
+            Assert.AreEqual(11, GetBytes(new Variant(12345.678m)).Length);
+            Assert.AreEqual(9, GetBytes(new Variant(1d)).Length);
+            Assert.AreEqual(5, GetBytes(new Variant(1f)).Length);
+            Assert.AreEqual(5, GetBytes(new Variant(Single.NaN)).Length);
         }
 
         [Test]
@@ -141,7 +141,7 @@ namespace ProtoVariant.Test
 
         private object PerformFullRoundtrip(object value)
         {
-            var variant = Variant.Create(value);
+            var variant = new Variant(value);
 
             var newVariant = GetInstance<Variant>(GetBytes(variant));
 

@@ -22,126 +22,103 @@ namespace ProtoVariant
 
         private abstract class VariantSerializer
         {
-            public abstract Variant Serialize(object value);
+            public abstract void Serialize(Variant variant, object value);
         }
 
         private abstract class VariantSerializer<T> : VariantSerializer
         {
-            public override Variant Serialize(object value)
+            public override void Serialize(Variant variant, object value)
             {
-                return SerializeCore((T)value);
+                SerializeCore(variant, (T)value);
             }
 
-            protected abstract Variant SerializeCore(T value);
+            protected abstract void SerializeCore(Variant variant, T value);
         }
 
         private class BoolSerializer : VariantSerializer<bool>
         {
-            protected override Variant SerializeCore(bool value)
+            protected override void SerializeCore(Variant variant, bool value)
             {
-                return new Variant
-                {
-                    _type = value ? VariantType.BoolTrue : VariantType.BoolFalse
-                };
+                variant._type = value ? VariantType.BoolTrue : VariantType.BoolFalse;
             }
         }
 
         private class StringSeriaizer : VariantSerializer<string>
         {
-            protected override Variant SerializeCore(string value)
+            protected override void SerializeCore(Variant variant, string value)
             {
-                var result = new Variant();
-
                 if (String.Empty.Equals(value))
-                    result._type = VariantType.StringEmpty;
+                    variant._type = VariantType.StringEmpty;
                 else
-                    result._valueString = value;
-
-                return result;
+                    variant._valueString = value;
             }
         }
 
         private class Int32Serializer : VariantSerializer<int>
         {
-            protected override Variant SerializeCore(int value)
+            protected override void SerializeCore(Variant variant, int value)
             {
-                var result = new Variant();
-
                 if (value == 0)
-                    result._type = VariantType.Int32Zero;
+                    variant._type = VariantType.Int32Zero;
                 else
-                    result._valueInt32 = value;
-
-                return result;
+                    variant._valueInt32 = value;
             }
         }
 
         private class Int64Serializer : VariantSerializer<long>
         {
-            protected override Variant SerializeCore(long value)
+            protected override void SerializeCore(Variant variant, long value)
             {
-                var result = new Variant();
-
                 if (value == 0)
-                    result._type = VariantType.Int64Zero;
+                    variant._type = VariantType.Int64Zero;
                 else
-                    result._valueInt64 = value;
-
-                return result;
+                    variant._valueInt64 = value;
             }
         }
 
         private class FloatSerializer : VariantSerializer<float>
         {
-            protected override Variant SerializeCore(float value)
+            protected override void SerializeCore(Variant variant, float value)
             {
-                var result = new Variant();
-
                 if (value == 0f)
-                    result._type = VariantType.FloatZero;
+                    variant._type = VariantType.FloatZero;
                 else
-                    result._valueFloat = value;
-
-                return result;
+                    variant._valueFloat = value;
             }
         }
 
         private class DoubleSerializer : VariantSerializer<double>
         {
-            protected override Variant SerializeCore(double value)
+            protected override void SerializeCore(Variant variant, double value)
             {
-                var result = new Variant();
-
                 if (value == 0d)
-                    result._type = VariantType.DoubleZero;
+                    variant._type = VariantType.DoubleZero;
                 else
-                    result._valueDouble = value;
-
-                return result;
+                    variant._valueDouble = value;
             }
         }
 
         private class DecimalSerializer : VariantSerializer<decimal>
         {
-            protected override Variant SerializeCore(decimal value)
+            protected override void SerializeCore(Variant variant, decimal value)
             {
-                return new Variant { _valueDecimal = value.ToString(CultureInfo.InvariantCulture) };
+                variant._valueDecimal = value.ToString(CultureInfo.InvariantCulture);
             }
         }
 
         private class DateTimeSerializer : VariantSerializer<DateTime>
         {
-            protected override Variant SerializeCore(DateTime value)
+            protected override void SerializeCore(Variant variant, DateTime value)
             {
-                return new Variant { _valueDateTime = value.ToString("s") };
+                variant._valueDateTime = value.ToString("s");
             }
         }
 
         private class BytesSerializer : VariantSerializer<byte[]>
         {
-            protected override Variant SerializeCore(byte[] value)
+            protected override void SerializeCore(Variant variant, byte[] value)
             {
-                return new Variant { _valueBytes = value };
+                variant._valueBytes = value;
             }
         }
     }
