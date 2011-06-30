@@ -14,51 +14,125 @@ namespace ProtoVariant
     [ProtoContract]
     public sealed partial class Variant
     {
-        // With protobuf-net we have the option of making the struct properties
-        // nullable (e.g. int?). This way we can control whether optional
-        // properties are serialized and actually serialize 0 for int32 even
-        // though it's optional. The reason we're not doing that is to keep
-        // the size of Variant down. If we would implement this, we would
-        // require 20 extra bytes with little added value (the boolean values
-        // of the Nullable<T> struct). Also, this depends on implementation
-        // details of protobuf-net and I feel this lessens compatability.
+        /// <summary>
+        /// Gets the value stored in the <see cref="Variant"/>.
+        /// </summary>
+        public object Value { get; private set; }
 
-        private bool _haveValue;
-        private object _value;
+        [ProtoMember(1, IsRequired = true)]
+        private bool ValueBool
+        {
+            get { return (bool)Value; }
+            set { Value = (bool)value; }
+        }
 
-        [ProtoMember(1, IsRequired = false, DataFormat = DataFormat.TwosComplement)]
-        private VariantType _type;
+        private bool ShouldSerializeValueBool()
+        {
+            return Value is bool;
+        }
 
-        [ProtoMember(2, IsRequired = false, DataFormat = DataFormat.TwosComplement)]
-        private int _valueInt32;
+        [ProtoMember(2, IsRequired = true, DataFormat = DataFormat.TwosComplement)]
+        private int ValueInt32
+        {
+            get { return (int)Value; }
+            set { Value = (int)value; }
+        }
 
-        [ProtoMember(3, IsRequired = false, DataFormat = DataFormat.TwosComplement)]
-        private long _valueInt64;
+        private bool ShouldSerializeValueInt32()
+        {
+            return Value is int;
+        }
 
-        [ProtoMember(4, IsRequired = false)]
-        private float _valueFloat;
+        [ProtoMember(3, IsRequired = true, DataFormat = DataFormat.TwosComplement)]
+        private long ValueInt64
+        {
+            get { return (long)Value; }
+            set { Value = (long)value; }
+        }
 
-        [ProtoMember(5, IsRequired = false)]
-        private double _valueDouble;
+        private bool ShouldSerializeValueInt64()
+        {
+            return Value is long;
+        }
 
-        [ProtoMember(6, IsRequired = false)]
-        private string _valueString;
+        [ProtoMember(4, IsRequired = true)]
+        private float ValueFloat
+        {
+            get { return (float)Value; }
+            set { Value = (float)value; }
+        }
 
-        [ProtoMember(7, IsRequired = false)]
-        private byte[] _valueBytes;
+        private bool ShouldSerializeValueFloat()
+        {
+            return Value is float;
+        }
+
+        [ProtoMember(5, IsRequired = true)]
+        private double ValueDouble
+        {
+            get { return (double)Value; }
+            set { Value = (double)value; }
+        }
+
+        private bool ShouldSerializeValueDouble()
+        {
+            return Value is double;
+        }
+
+        [ProtoMember(6, IsRequired = true)]
+        private string ValueString
+        {
+            get { return (string)Value; }
+            set { Value = (string)value; }
+        }
+
+        private bool ShouldSerializeValueString()
+        {
+            return Value is string;
+        }
+
+        [ProtoMember(7, IsRequired = true)]
+        private byte[] ValueBytes
+        {
+            get { return (byte[])Value; }
+            set { Value = (byte[])value; }
+        }
+
+        private bool ShouldSerializeValueBytes()
+        {
+            return Value is byte[];
+        }
 
         // Decimal is stored as a string because this is the only interoperably
         // way to guarentee lossless transfer of data. .NET has the option of
         // serializing Decimals using their raw data, but this always takes 16
         // bytes and is less interoperable.
-        [ProtoMember(8, IsRequired = false)]
-        private string _valueDecimal;
+        [ProtoMember(8, IsRequired = true)]
+        private string ValueDecimal
+        {
+            get { return ((decimal)Value).ToString(CultureInfo.InvariantCulture); }
+            set { Value = Decimal.Parse((string)value, CultureInfo.InvariantCulture); }
+        }
+
+        private bool ShouldSerializeValueDecimal()
+        {
+            return Value is decimal;
+        }
 
         // DateTime's are stored as FixedSize because it generally contains
         // larges values. As of this moment, using TwosComplement already takes
         // up one extra byte when serializing DateTime.Now.
-        [ProtoMember(9, IsRequired = false, DataFormat = DataFormat.FixedSize)]
-        private long _valueDateTime;
+        [ProtoMember(9, IsRequired = true, DataFormat = DataFormat.FixedSize)]
+        private long ValueDateTime
+        {
+            get { return ((DateTime)Value).Ticks; }
+            set { Value = new DateTime((long)value); }
+        }
+
+        private bool ShouldSerializeValueDateTime()
+        {
+            return Value is DateTime;
+        }
 
         private Variant()
         {
@@ -73,39 +147,7 @@ namespace ProtoVariant
         /// <param name="value">Value to be stored in the <see cref="Variant"/>.</param>
         public Variant(object value)
         {
-            _haveValue = true;
-            _value = value;
-
-            if (value == null)
-            {
-                _type = VariantType.Null;
-            }
-            else
-            {
-                VariantSerializer serializer;
-
-                if (!_serializers.TryGetValue(value.GetType(), out serializer))
-                    throw new ArgumentException(String.Format("Cannot serialize type {0} to Variant", value.GetType().FullName), "value");
-
-                serializer.Serialize(this, value);
-            }
-        }
-
-        /// <summary>
-        /// Gets the value stored in the <see cref="Variant"/>.
-        /// </summary>
-        public object Value
-        {
-            get
-            {
-                if (!_haveValue)
-                {
-                    _value = ConstructValue();
-                    _haveValue = true;
-                }
-
-                return _value;
-            }
+            Value = value;
         }
     }
 }

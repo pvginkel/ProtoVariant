@@ -26,7 +26,7 @@ namespace ProtoVariant.Test
         public void Test_sizes()
         {
             Assert.AreEqual(2, GetBytes(new Variant(0)).Length);
-            Assert.AreEqual(2, GetBytes(new Variant(null)).Length);
+            Assert.AreEqual(0, GetBytes(new Variant(null)).Length);
             Assert.AreEqual(2, GetBytes(new Variant(1)).Length);
             Assert.AreEqual(2, GetBytes(new Variant(true)).Length);
             Assert.AreEqual(5, GetBytes(new Variant("Foo")).Length);
@@ -36,6 +36,8 @@ namespace ProtoVariant.Test
             Assert.AreEqual(9, GetBytes(new Variant(1d)).Length);
             Assert.AreEqual(5, GetBytes(new Variant(1f)).Length);
             Assert.AreEqual(5, GetBytes(new Variant(Single.NaN)).Length);
+            Assert.AreEqual(2, GetBytes(new Variant(new byte[0])).Length);
+            Assert.AreEqual(5, GetBytes(new Variant(new byte[] { 1, 2, 3 })).Length);
         }
 
         [Test]
