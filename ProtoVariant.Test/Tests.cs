@@ -30,7 +30,7 @@ namespace ProtoVariant.Test
             Assert.AreEqual(2, GetBytes(new Variant(1)).Length);
             Assert.AreEqual(2, GetBytes(new Variant(true)).Length);
             Assert.AreEqual(5, GetBytes(new Variant("Foo")).Length);
-            Assert.AreEqual(21, GetBytes(new Variant(DateTime.Now)).Length);
+            Assert.AreEqual(9, GetBytes(new Variant(DateTime.Now)).Length);
             Assert.AreEqual(3, GetBytes(new Variant(1m)).Length);
             Assert.AreEqual(11, GetBytes(new Variant(12345.678m)).Length);
             Assert.AreEqual(9, GetBytes(new Variant(1d)).Length);
@@ -120,9 +120,9 @@ namespace ProtoVariant.Test
         {
             var now = DateTime.Now;
 
-            Assert.AreEqual(RoundDateTime(now), PerformFullRoundtrip(RoundDateTime(now)));
-            Assert.AreEqual(RoundDateTime(DateTime.MinValue), PerformFullRoundtrip(RoundDateTime(DateTime.MinValue)));
-            Assert.AreEqual(RoundDateTime(DateTime.MaxValue), PerformFullRoundtrip(RoundDateTime(DateTime.MaxValue)));
+            Assert.AreEqual(now, PerformFullRoundtrip(now));
+            Assert.AreEqual(DateTime.MinValue, PerformFullRoundtrip(DateTime.MinValue));
+            Assert.AreEqual(DateTime.MaxValue, PerformFullRoundtrip(DateTime.MaxValue));
         }
 
         [Test]
@@ -130,13 +130,6 @@ namespace ProtoVariant.Test
         {
             Assert.AreEqual(new byte[0], PerformFullRoundtrip(new byte[0]));
             Assert.AreEqual(new byte[] { 1, 2, 3 }, PerformFullRoundtrip(new byte[] { 1, 2, 3 }));
-        }
-
-        private DateTime RoundDateTime(DateTime dateTime)
-        {
-            // Milliseconds are not serialized.
-
-            return new DateTime(dateTime.Year, dateTime.Month, dateTime.Day, dateTime.Hour, dateTime.Minute, dateTime.Second);
         }
 
         private object PerformFullRoundtrip(object value)

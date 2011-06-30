@@ -45,8 +45,8 @@ namespace ProtoVariant
         [ProtoMember(8, IsRequired = false, DataFormat = DataFormat.Default)]
         private string _valueDecimal;
 
-        [ProtoMember(9, IsRequired = false, DataFormat = DataFormat.Default)]
-        private string _valueDateTime;
+        [ProtoMember(9, IsRequired = false, DataFormat = DataFormat.FixedSize)]
+        private long _valueDateTime;
 
         private Variant()
         {
@@ -98,6 +98,7 @@ namespace ProtoVariant
                 case VariantType.Int64Zero: return 0L;
                 case VariantType.Null: return null;
                 case VariantType.StringEmpty: return String.Empty;
+                case VariantType.DateTimeZero: return new DateTime(0);
 
                 default:
                     if (_valueInt32 != 0)
@@ -112,8 +113,8 @@ namespace ProtoVariant
                         return _valueString;
                     if (_valueBytes != null)
                         return _valueBytes;
-                    if (!String.IsNullOrEmpty(_valueDateTime))
-                        return DateTime.ParseExact(_valueDateTime, "s", CultureInfo.InvariantCulture);
+                    if (_valueDateTime != 0L)
+                        return new DateTime(_valueDateTime);
                     if (!String.IsNullOrEmpty(_valueDecimal))
                         return Decimal.Parse(_valueDecimal, CultureInfo.InvariantCulture);
                     return null;

@@ -110,7 +110,12 @@ namespace ProtoVariant
         {
             protected override void SerializeCore(Variant variant, DateTime value)
             {
-                variant._valueDateTime = value.ToString("s");
+                long ticks = value.Ticks;
+
+                if (ticks == 0L)
+                    variant._type = VariantType.DateTimeZero;
+                else
+                    variant._valueDateTime = ticks;
             }
         }
 
