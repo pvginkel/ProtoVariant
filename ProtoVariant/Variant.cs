@@ -9,6 +9,15 @@ namespace ProtoVariant
     [ProtoContract]
     public partial class Variant
     {
+        // With protobuf-net we have the option of making the struct properties
+        // nullable (e.g. int?). This way we can control whether optional
+        // properties are serialized and actually serialize 0 for int32 even
+        // though it's optional. The reason we're not doing that is to keep
+        // the size of Variant down. If we would implement this, we would
+        // require 20 extra bytes with little added value (the boolean values
+        // of the Nullable<T> struct). Also, this depends on implementation
+        // details of protobuf-net and I feel this lessens compatability.
+
         [ProtoMember(1, IsRequired = false, DataFormat = DataFormat.TwosComplement)]
         private VariantType _type;
 
