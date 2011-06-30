@@ -125,6 +125,13 @@ namespace ProtoVariant.Test
             Assert.AreEqual(RoundDateTime(DateTime.MaxValue), PerformFullRoundtrip(RoundDateTime(DateTime.MaxValue)));
         }
 
+        [Test]
+        public void Test_bytes()
+        {
+            Assert.AreEqual(new byte[0], PerformFullRoundtrip(new byte[0]));
+            Assert.AreEqual(new byte[] { 1, 2, 3 }, PerformFullRoundtrip(new byte[] { 1, 2, 3 }));
+        }
+
         private DateTime RoundDateTime(DateTime dateTime)
         {
             // Milliseconds are not serialized.
