@@ -1,280 +1,281 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Drawing;
+using System.Globalization;
 using System.Text;
 using ProtoBuf;
-using System.Globalization;
-using System.Collections;
 
 namespace ProtoVariant
 {
-    /// <summary>
-    /// Represents a variant message used with protobuf. This message can contain
-    /// a value of type int, long, float, double, string, byte[], decimal or
-    /// DateTime, or can be null, while guarenteeing lossless roundtrips.
-    /// </summary>
     [ProtoContract]
     [Serializable]
+    [DebuggerDisplay("Value={Value}, Type={Type}")]
     public sealed class Variant : IEquatable<Variant>
     {
-        /// <summary>
-        /// Gets the value stored in the <see cref="Variant"/>.
-        /// </summary>
-        public object Value { get; private set; }
+        private static readonly object _syncRoot = new object();
 
-        [ProtoMember(1, IsRequired = true)]
-        private bool ValueBool
+        private static readonly Dictionary<VariantType, object> FixedFromType = new Dictionary<VariantType, object>
         {
-            get { return (bool)Value; }
-            set { Value = (bool)value; }
+            { VariantType.Null, null },
+            { VariantType.EmptyString, String.Empty },
+            { VariantType.False, false },
+            { VariantType.True, true },
+            { VariantType.Int32Zero, 0 },
+            { VariantType.Int32One, 1 },
+            { VariantType.Int64Zero, (long)0 },
+            { VariantType.SingleZero, 0f },
+            { VariantType.DoubleZero, 0d },
+            { VariantType.DecimalZero, 0m },
+            { VariantType.EmptyColor, Color.Empty }
+        };
+
+        private static readonly Dictionary<VariantType, IValueProvider> ProviderFromVariantType = new Dictionary<VariantType, IValueProvider>
+        {
+            { VariantType.Int32, new ValueProvider<int>(VariantType.Int32) },
+            { VariantType.Int64, new ValueProvider<long>(VariantType.Int64) },
+            { VariantType.Single, new ValueProvider<float>(VariantType.Single) },
+            { VariantType.Double, new ValueProvider<double>(VariantType.Double) },
+            { VariantType.String, new ValueProvider<string>(VariantType.String) },
+            { VariantType.Decimal, new ValueProvider<decimal>(VariantType.Decimal) },
+            { VariantType.DateTime, new DateTimeValueProvider() },
+            { VariantType.Color, new ColorValueProvider() },
+        };
+
+        private static readonly Dictionary<object, VariantType> FixedFromValue = BuildFixedFromValue();
+
+        private static Dictionary<object, VariantType> BuildFixedFromValue()
+        {
+            var result = new Dictionary<object, VariantType>();
+
+            foreach (var item in FixedFromType)
+            {
+                if (item.Value != null)
+                    result.Add(item.Value, item.Key);
+            }
+
+            return result;
         }
 
-        private bool ShouldSerializeValueBool()
+        private static readonly Dictionary<Type, IValueProvider> ProviderFromType = BuildProviderFromType();
+
+        private static Dictionary<Type, IValueProvider> BuildProviderFromType()
         {
-            return Value is bool;
+            // We want to re-use the value providers, so we build this from
+            // the _providerFromVariantType.
+
+            var result = new Dictionary<Type, IValueProvider>();
+
+            foreach (var provider in ProviderFromVariantType.Values)
+            {
+                result.Add(provider.Type, provider);
+            }
+
+            return result;
         }
 
-        [ProtoMember(2, IsRequired = true, DataFormat = DataFormat.TwosComplement)]
-        private int ValueInt32
+        private static Dictionary<int, IVariantValueProvider> _customValueProviderBySubType = new Dictionary<int, IVariantValueProvider>();
+        private static Dictionary<Type, IVariantValueProvider> _customValueProviderByType = new Dictionary<Type, IVariantValueProvider>();
+
+        public static void RegisterValueProvider(IVariantValueProvider valueProvider)
         {
-            get { return (int)Value; }
-            set { Value = (int)value; }
+            if (valueProvider == null)
+                throw new ArgumentNullException("valueProvider");
+
+            lock (_syncRoot)
+            {
+                _customValueProviderBySubType = new Dictionary<int, IVariantValueProvider>(_customValueProviderBySubType)
+                {
+                    { valueProvider.SubType, valueProvider }
+                };
+
+                _customValueProviderByType = new Dictionary<Type, IVariantValueProvider>(_customValueProviderByType)
+                {
+                    { valueProvider.Type, valueProvider }
+                };
+            }
         }
 
-        private bool ShouldSerializeValueInt32()
+        [ProtoMember(1)]
+        [DefaultValue(VariantType.Null)]
+        internal VariantType Type { get; set; }
+
+        [ProtoMember(2, IsRequired = false)]
+        [DefaultValue(null)]
+        internal string StringValue { get; set; }
+
+        [ProtoMember(3, IsRequired = false)]
+        [DefaultValue(0)]
+        internal int IntValue { get; set; }
+
+        public object Value
         {
-            return Value is int;
+            get
+            {
+                object result;
+
+                if (FixedFromType.TryGetValue(Type, out result))
+                    return result;
+
+                if (Type == VariantType.Custom)
+                {
+                    IVariantValueProvider customProvider;
+
+                    if (!_customValueProviderBySubType.TryGetValue(IntValue, out customProvider))
+                        throw new InvalidOperationException("No value provider registered");
+
+                    return customProvider.Decode(StringValue);
+                }
+
+                if (Type == VariantType.Int32)
+                    return IntValue;
+
+                Debug.Assert(StringValue != null);
+
+                if (Type == VariantType.String)
+                    return StringValue;
+
+                IValueProvider provider;
+
+                if (!ProviderFromVariantType.TryGetValue(Type, out provider))
+                    throw new InvalidOperationException("Cannot decode");
+
+                return provider.Decode(StringValue);
+            }
+            set
+            {
+                StringValue = null;
+
+                if (value == null)
+                {
+                    Type = VariantType.Null;
+                }
+                else
+                {
+                    VariantType type;
+
+                    if (FixedFromValue.TryGetValue(value, out type))
+                    {
+                        Type = type;
+                    }
+                    else
+                    {
+                        var valueType = value.GetType();
+                        IVariantValueProvider customProvider;
+                        IValueProvider provider;
+
+                        if (_customValueProviderByType.TryGetValue(valueType, out customProvider))
+                        {
+                            Type = VariantType.Custom;
+                            IntValue = customProvider.SubType;
+                            StringValue = customProvider.Encode(value);
+                        }
+                        else if (ProviderFromType.TryGetValue(valueType, out provider))
+                        {
+                            Type = provider.VariantType;
+
+                            if (Type == VariantType.Int32)
+                            {
+                                IntValue = (int)value;
+                                StringValue = null;
+                            }
+                            else if (Type == VariantType.String)
+                            {
+                                StringValue = (string)value;
+                                IntValue = 0;
+                            }
+                            else
+                            {
+                                StringValue = provider.Encode(value);
+                                IntValue = 0;
+                            }
+                        }
+                        else
+                        {
+                            throw new ArgumentException("Cannot encode", "value");
+                        }
+                    }
+                }
+            }
         }
 
-        [ProtoMember(3, IsRequired = true, DataFormat = DataFormat.TwosComplement)]
-        private long ValueInt64
+        public Variant()
         {
-            get { return (long)Value; }
-            set { Value = (long)value; }
         }
 
-        private bool ShouldSerializeValueInt64()
-        {
-            return Value is long;
-        }
-
-        [ProtoMember(4, IsRequired = true)]
-        private float ValueFloat
-        {
-            get { return (float)Value; }
-            set { Value = (float)value; }
-        }
-
-        private bool ShouldSerializeValueFloat()
-        {
-            return Value is float;
-        }
-
-        [ProtoMember(5, IsRequired = true)]
-        private double ValueDouble
-        {
-            get { return (double)Value; }
-            set { Value = (double)value; }
-        }
-
-        private bool ShouldSerializeValueDouble()
-        {
-            return Value is double;
-        }
-
-        [ProtoMember(6, IsRequired = true)]
-        private string ValueString
-        {
-            get { return (string)Value; }
-            set { Value = (string)value; }
-        }
-
-        private bool ShouldSerializeValueString()
-        {
-            return Value is string;
-        }
-
-        [ProtoMember(7, IsRequired = true)]
-        private byte[] ValueBytes
-        {
-            get { return (byte[])Value; }
-            set { Value = (byte[])value; }
-        }
-
-        private bool ShouldSerializeValueBytes()
-        {
-            return Value is byte[];
-        }
-
-        // Decimal is stored as a string because this is the only interoperably
-        // way to guarentee lossless transfer of data. .NET has the option of
-        // serializing Decimals using their raw data, but this always takes 16
-        // bytes and is less interoperable.
-        [ProtoMember(8, IsRequired = true)]
-        private string ValueDecimal
-        {
-            get { return ((decimal)Value).ToString(CultureInfo.InvariantCulture); }
-            set { Value = Decimal.Parse((string)value, CultureInfo.InvariantCulture); }
-        }
-
-        private bool ShouldSerializeValueDecimal()
-        {
-            return Value is decimal;
-        }
-
-        // DateTime's are stored as FixedSize because it generally contains
-        // larges values. As of this moment, using TwosComplement already takes
-        // up one extra byte when serializing DateTime.Now.
-        [ProtoMember(9, IsRequired = true, DataFormat = DataFormat.FixedSize)]
-        private long ValueDateTime
-        {
-            get { return ((DateTime)Value).Ticks; }
-            set { Value = new DateTime((long)value); }
-        }
-
-        private bool ShouldSerializeValueDateTime()
-        {
-            return Value is DateTime;
-        }
-
-        private Variant()
-        {
-            // Private constructor for deserialization.
-        }
-
-        /// <summary>
-        /// Initialize a new <see cref="Variant"/> from an existing value.
-        /// </summary>
-        /// <exception cref="ArgumentException"><paramref name="value"/> is not
-        /// of a type which can be safely stored in a <see cref="Variant"/>.</exception>
-        /// <param name="value">Value to be stored in the <see cref="Variant"/>.</param>
         public Variant(object value)
         {
             Value = value;
         }
 
-        /// <summary>
-        /// Returns true when the contained value is null.
-        /// </summary>
         public bool IsNull
         {
-            get { return Value == null; }
+            get { return Type == VariantType.Null; }
         }
 
-        /// <summary>
-        /// Returns the contained value as a boolean.
-        /// </summary>
-        /// <returns>Contained value as a boolean.</returns>
-        /// <exception cref="InvalidCastException">When the contained value is not a boolean.</exception>
         public bool ToBool()
         {
-            return ValueBool;
+            return (bool)Value;
         }
 
-        /// <summary>
-        /// Returns the contained value as an integer.
-        /// </summary>
-        /// <returns>Contained value as an integer.</returns>
-        /// <exception cref="InvalidCastException">When the contained value is not an integer.</exception>
         public int ToInt32()
         {
-            return ValueInt32;
+            return (int)Value;
         }
 
-        /// <summary>
-        /// Returns the contained value as a long.
-        /// </summary>
-        /// <returns>Contained value as a long.</returns>
-        /// <exception cref="InvalidCastException">When the contained value is not a long.</exception>
         public long ToInt64()
         {
-            if (Value is int)
-                return (int)Value;
+            object value = Value;
 
-            return ValueInt64;
+            if (value is int)
+                return (int)value;
+
+            return (long)value;
         }
 
-        /// <summary>
-        /// Returns the contained value as a string.
-        /// </summary>
-        /// <returns>Contained value as a string.</returns>
-        /// <exception cref="InvalidCastException">When the contained value is not a string.</exception>
         public override string ToString()
         {
-            return ValueString;
+            return (string)Value;
         }
 
-        /// <summary>
-        /// Returns the contained value as a float.
-        /// </summary>
-        /// <returns>Contained value as a float.</returns>
-        /// <exception cref="InvalidCastException">When the contained value is not a float.</exception>
         public float ToSingle()
         {
-            return ValueFloat;
+            return (float)Value;
         }
 
-        /// <summary>
-        /// Returns the contained value as a double.
-        /// </summary>
-        /// <returns>Contained value as a double.</returns>
-        /// <exception cref="InvalidCastException">When the contained value is not a double.</exception>
         public double ToDouble()
         {
-            if (Value is float)
-                return (float)Value;
+            object value = Value;
 
-            return ValueDouble;
+            if (value is float)
+                return (float)value;
+
+            return (double)value;
         }
 
-        /// <summary>
-        /// Returns the contained value as a decimal.
-        /// </summary>
-        /// <returns>Contained value as a decimal.</returns>
-        /// <exception cref="InvalidCastException">When the contained value is not a decimal.</exception>
         public decimal ToDecimal()
         {
             return (decimal)Value;
         }
 
-        /// <summary>
-        /// Returns the contained value as a <see cref="DateTime"/>.
-        /// </summary>
-        /// <returns>Contained value as a <see cref="DateTime"/>.</returns>
-        /// <exception cref="InvalidCastException">When the contained value is not a <see cref="DateTime"/>.</exception>
         public DateTime ToDateTime()
         {
             return (DateTime)Value;
         }
 
-        /// <summary>
-        /// Returns the contained value as a byte array.
-        /// </summary>
-        /// <returns>Contained value as a byte array.</returns>
-        /// <exception cref="InvalidCastException">When the contained value is not a byte array.</exception>
-        public byte[] ToByteArray()
+        public Color ToColor()
         {
-            return ValueBytes;
+            return (Color)Value;
         }
 
-        /// <summary>
-        /// Returns the hash code of the contained value.
-        /// </summary>
-        /// <returns>Hash code of the contained value.</returns>
         public override int GetHashCode()
         {
-            if (Value == null)
-                return 0;
-            else
-                return Value.GetHashCode();
+            object value = Value;
+
+            return value == null ? 0 : value.GetHashCode();
         }
 
-        /// <summary>
-        /// Returns true when the contained value of <paramref name="other"/>
-        /// is equal to the contained value of this <see cref="Variant"/>.
-        /// </summary>
-        /// <param name="other"><see cref="Variant"/> to compare with.</param>
-        /// <returns>True when the contained value of <paramref name="other"/>
-        /// is equal to the contained value of this <see cref="Variant"/>.</returns>
         public bool Equals(Variant other)
         {
             if (ReferenceEquals(this, other))
@@ -283,184 +284,239 @@ namespace ProtoVariant
             return Equals(Value, other.Value);
         }
 
-        /// <summary>
-        /// Converts the contained value to a boolean.
-        /// </summary>
-        /// <param name="variant"><see cref="Variant"/> to convert.</param>
-        /// <returns>Contained value as a boolean.</returns>
         public static implicit operator bool(Variant variant)
         {
             return variant.ToBool();
         }
 
-        /// <summary>
-        /// Converts a boolean to a <see cref="Variant"/>.
-        /// </summary>
-        /// <param name="value">Boolean to convert.</param>
-        /// <returns><see cref="Variant"/> for the provided boolean.</returns>
         public static implicit operator Variant(bool value)
         {
             return new Variant(value);
         }
 
-        /// <summary>
-        /// Converts the contained value to an integer.
-        /// </summary>
-        /// <param name="variant"><see cref="Variant"/> to convert.</param>
-        /// <returns>Contained value as an integer.</returns>
         public static implicit operator int(Variant variant)
         {
             return variant.ToInt32();
         }
 
-        /// <summary>
-        /// Converts an integer to a <see cref="Variant"/>.
-        /// </summary>
-        /// <param name="value">Integer to convert.</param>
-        /// <returns><see cref="Variant"/> for the provided integer.</returns>
         public static implicit operator Variant(int value)
         {
             return new Variant(value);
         }
 
-        /// <summary>
-        /// Converts the contained value to a long.
-        /// </summary>
-        /// <param name="variant"><see cref="Variant"/> to convert.</param>
-        /// <returns>Contained value as a long.</returns>
         public static implicit operator long(Variant variant)
         {
             return variant.ToInt64();
         }
 
-        /// <summary>
-        /// Converts a long to a <see cref="Variant"/>.
-        /// </summary>
-        /// <param name="value">Long to convert.</param>
-        /// <returns><see cref="Variant"/> for the provided long.</returns>
         public static implicit operator Variant(long value)
         {
             return new Variant(value);
         }
 
-        /// <summary>
-        /// Converts the contained value to a string.
-        /// </summary>
-        /// <param name="variant"><see cref="Variant"/> to convert.</param>
-        /// <returns>Contained value as a string.</returns>
         public static implicit operator string(Variant variant)
         {
             return variant.ToString();
         }
 
-        /// <summary>
-        /// Converts a string to a <see cref="Variant"/>.
-        /// </summary>
-        /// <param name="value">String to convert.</param>
-        /// <returns><see cref="Variant"/> for the provided string.</returns>
         public static implicit operator Variant(string value)
         {
             return new Variant(value);
         }
 
-        /// <summary>
-        /// Converts the contained value to a float.
-        /// </summary>
-        /// <param name="variant"><see cref="Variant"/> to convert.</param>
-        /// <returns>Contained value as a float.</returns>
         public static implicit operator float(Variant variant)
         {
             return variant.ToSingle();
         }
 
-        /// <summary>
-        /// Converts a float to a <see cref="Variant"/>.
-        /// </summary>
-        /// <param name="value">Float to convert.</param>
-        /// <returns><see cref="Variant"/> for the provided float.</returns>
         public static implicit operator Variant(float value)
         {
             return new Variant(value);
         }
 
-        /// <summary>
-        /// Converts the contained value to a double.
-        /// </summary>
-        /// <param name="variant"><see cref="Variant"/> to convert.</param>
-        /// <returns>Contained value as a double.</returns>
         public static implicit operator double(Variant variant)
         {
             return variant.ToDouble();
         }
 
-        /// <summary>
-        /// Converts a double to a <see cref="Variant"/>.
-        /// </summary>
-        /// <param name="value">Double to convert.</param>
-        /// <returns><see cref="Variant"/> for the provided double.</returns>
         public static implicit operator Variant(double value)
         {
             return new Variant(value);
         }
 
-        /// <summary>
-        /// Converts the contained value to a decimal.
-        /// </summary>
-        /// <param name="variant"><see cref="Variant"/> to convert.</param>
-        /// <returns>Contained value as a decimal.</returns>
         public static implicit operator decimal(Variant variant)
         {
             return variant.ToDecimal();
         }
 
-        /// <summary>
-        /// Converts a decimal to a <see cref="Variant"/>.
-        /// </summary>
-        /// <param name="value">Decimal to convert.</param>
-        /// <returns><see cref="Variant"/> for the provided decimal.</returns>
         public static implicit operator Variant(decimal value)
         {
             return new Variant(value);
         }
 
-        /// <summary>
-        /// Converts the contained value to a <see cref="DateTime"/>.
-        /// </summary>
-        /// <param name="variant"><see cref="Variant"/> to convert.</param>
-        /// <returns>Contained value as a <see cref="DateTime"/>.</returns>
         public static implicit operator DateTime(Variant variant)
         {
             return variant.ToDateTime();
         }
 
-        /// <summary>
-        /// Converts a <see cref="DateTime"/> to a <see cref="Variant"/>.
-        /// </summary>
-        /// <param name="value"><see cref="DateTime"/> to convert.</param>
-        /// <returns><see cref="Variant"/> for the provided <see cref="DateTime"/>.</returns>
+        public static implicit operator Color(Variant variant)
+        {
+            return variant.ToColor();
+        }
+
         public static implicit operator Variant(DateTime value)
         {
             return new Variant(value);
         }
 
-        /// <summary>
-        /// Converts the contained value to a byte array.
-        /// </summary>
-        /// <param name="variant"><see cref="Variant"/> to convert.</param>
-        /// <returns>Contained value as a byte array.</returns>
-        public static implicit operator byte[](Variant variant)
+        private interface IValueProvider
         {
-            return variant.ToByteArray();
+            Type Type { get; }
+            VariantType VariantType { get; }
+            string Encode(object value);
+            object Decode(string value);
         }
 
-        /// <summary>
-        /// Converts a byte array to a <see cref="Variant"/>.
-        /// </summary>
-        /// <param name="value">Byte array to convert.</param>
-        /// <returns><see cref="Variant"/> for the provided byte array.</returns>
-        public static implicit operator Variant(byte[] value)
+        private class ValueProvider<T> : IValueProvider
         {
-            return new Variant(value);
+            private readonly XsdType _type = XsdType.FindConverter(typeof(T));
+
+            public Type Type
+            {
+                get { return typeof(T); }
+            }
+
+            public VariantType VariantType { get; private set; }
+
+            public ValueProvider(VariantType variantType)
+            {
+                VariantType = variantType;
+            }
+
+            public string Encode(object value)
+            {
+                return _type.Encode(value);
+            }
+
+            public object Decode(string value)
+            {
+                return _type.Decode(value);
+            }
+        }
+
+        private class DateTimeValueProvider : IValueProvider
+        {
+            public Type Type
+            {
+                get { return typeof(DateTime); }
+            }
+
+            public VariantType VariantType
+            {
+                get { return VariantType.DateTime; }
+            }
+
+            public string Encode(object value)
+            {
+                var dateTime = (DateTime)value;
+
+                return String.Format(
+                    "{0}-{1:00}-{2:00}T{3:00}:{4:00}:{5:00}",
+                    dateTime.Year,
+                    dateTime.Month,
+                    dateTime.Day,
+                    dateTime.Hour,
+                    dateTime.Minute,
+                    dateTime.Second
+                );
+            }
+
+            public object Decode(string value)
+            {
+                int offset = 0;
+
+                return new DateTime(
+                    Eat(value, ref offset, '-'),
+                    Eat(value, ref offset, '-'),
+                    Eat(value, ref offset, 'T'),
+                    Eat(value, ref offset, ':'),
+                    Eat(value, ref offset, ':'),
+                    Eat(value, ref offset, -1)
+                );
+            }
+
+            private int Eat(string value, ref int offset, int c)
+            {
+                string part;
+
+                if (c == -1)
+                {
+                    part = value.Substring(offset);
+                }
+                else
+                {
+                    int start = offset;
+
+                    while (offset < value.Length && value[offset] != c)
+                    {
+                        offset++;
+                    }
+
+                    if (offset == value.Length)
+                        throw new InvalidOperationException("Cannot decode date/time");
+
+                    part = value.Substring(start, offset - start);
+                    offset++;
+                }
+
+                return int.Parse(part, NumberStyles.None, CultureInfo.InvariantCulture);
+            }
+        }
+
+        private class ColorValueProvider : IValueProvider
+        {
+            public Type Type
+            {
+                get { return typeof(Color); }
+            }
+
+            public VariantType VariantType
+            {
+                get { return VariantType.Color; }
+            }
+
+            public string Encode(object value)
+            {
+                var color = (Color)value;
+
+                return
+                    color.A == 255
+                    ? String.Format("{0:X2}{1:X2}{2:X2}", color.R, color.G, color.B)
+                    : String.Format("{0:X2}{1:X2}{2:X2}{3:X2}", color.A, color.R, color.G, color.B);
+            }
+
+            public object Decode(string value)
+            {
+                if (value.Length == 6)
+                {
+                    return Color.FromArgb(
+                        int.Parse(value.Substring(0, 2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture),
+                        int.Parse(value.Substring(2, 2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture),
+                        int.Parse(value.Substring(4, 2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture)
+                    );
+                }
+                else
+                {
+                    Debug.Assert(value.Length == 8);
+
+                    return Color.FromArgb(
+                        int.Parse(value.Substring(0, 2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture),
+                        int.Parse(value.Substring(2, 2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture),
+                        int.Parse(value.Substring(4, 2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture),
+                        int.Parse(value.Substring(6, 2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture)
+                    );
+                }
+            }
         }
     }
 }
